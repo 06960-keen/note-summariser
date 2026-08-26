@@ -9,6 +9,8 @@ client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
 st.set_page_config(page_title="AI Note Summarizer", page_icon="📝", layout="wide")
 
+if "history" not in st.session_state:
+    st.session_state.history = []
 # ---------- Sidebar ----------
 with st.sidebar:
     st.header("⚙️ Settings")
@@ -33,6 +35,12 @@ with st.sidebar:
     st.caption("Made for School Project")
     st.caption("Upload notes or paste them, choose a style, then generate.")
 
+    if st.session_state.history:
+        st.divider()
+        if st.button("🗑️ Clear history"):
+            st.session_state.history = []
+            st.rerun()
+            
 st.title("📝 AI Note Summarizer")
 st.write("Paste your notes below, or upload a file (PDF, Word, or TXT).")
 
@@ -105,7 +113,7 @@ user_notes = st.text_area(
 )
 
 generate_clicked = st.button("Generate Summary", type="primary")
-
+ 
 if generate_clicked:
     if user_notes.strip():
         with st.spinner("Summarizing..."):
@@ -114,7 +122,43 @@ if generate_clicked:
                 model="gemini-3-flash-preview",
                 contents=prompt,
             )
-            st.subheader("Summary & Study Points")
-            st.write(response.text)
+            st.session_state.history.append(
+                {
+                    "notes": user_notes,
+                    "summary": response.text,
+                    "style": style,
+                    "length": length,
+                    "language": language,
+                }
+            )
     else:
         st.warning("Please enter some notes first!")
+ 
+# ---------- Show latest summary ----------
+if st.session_state.history:
+    latest = st.session_state.history[-1]
+    st.subheader("Summary & Study Points")
+    st.write(latest["summary"])
+ 
+    st.download_button(
+        label="⬇️ Download this summary",
+        data=latest["summary"],
+        file_name="summary.txt",
+        mime="text/plain",
+    )
+ 
+# ---------- Past results ----------
+if len(st.session_state.history) > 1:
+    st.divider()
+    st.subheader("📚 Past Summaries")
+    for i, entry in enumerate(reversed(st.session_state.history[:-1])):
+        with st.expander(f"Summary {len(st.session_state.history) - 1 - i} — {entry['style']}, {entry['length']}"):
+            st.write(entry["summary"])
+            st.download_button(
+                label="⬇️ Download",
+                data=entry["summary"],
+                file_name=f"summary_{len(st.session_state.history) - 1 - i}.txt",
+                mime="text/plain",
+                key=f"download_{i}",
+            )
+ 
