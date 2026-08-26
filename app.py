@@ -23,6 +23,10 @@ with st.sidebar:
         options=["Short", "Medium", "Detailed"],
         value="Medium",
     )
+    language = st.selectbox(
+        "Response language:",
+        ["Auto-detect (match my notes)", "English", "Thai", "Spanish", "French", "Chinese", "Japanese"],
+    )
 
     st.divider()
     st.caption("Made for School Project")
