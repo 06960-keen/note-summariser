@@ -1,12 +1,56 @@
 import streamlit as st
 from google import genai
+from pypdf import PdfReader
+import docx
+import io
 
 # Initialize Gemini Client (replace with your key from AI Studio)
 client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
 st.title("📝 AI Note Summarizer")
 
-user_notes = st.text_area("Paste your lecture notes here:", height=200)
+
+def extract_text_from_file(uploaded_file):
+    """Return plain text from an uploaded pdf, docx, or txt file."""
+    file_type = uploaded_file.name.split(".")[-1].lower()
+
+    if file_type == "pdf":
+        reader = PdfReader(uploaded_file)
+        text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        return text
+
+    elif file_type == "docx":
+        document = docx.Document(io.BytesIO(uploaded_file.read()))
+        text = "\n".join(paragraph.text for paragraph in document.paragraphs)
+        return text
+
+    elif file_type == "txt":
+        return uploaded_file.read().decode("utf-8")
+
+    else:
+        return ""
+
+
+st.write("Paste your notes below, or upload a file (PDF, Word, or TXT).")
+
+uploaded_file = st.file_uploader(
+    "Upload notes file:", type=["pdf", "docx", "txt"]
+)
+
+extracted_text = ""
+if uploaded_file is not None:
+    with st.spinner("Reading file..."):
+        extracted_text = extract_text_from_file(uploaded_file)
+    if extracted_text.strip():
+        st.success(f"Loaded text from {uploaded_file.name}")
+    else:
+        st.warning("Couldn't find any readable text in that file.")
+
+user_notes = st.text_area(
+    "Paste your lecture notes here:",
+    value=extracted_text,
+    height=200,
+)
 
 if st.button("Generate Summary"):
     if user_notes.strip():
