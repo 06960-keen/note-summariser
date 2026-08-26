@@ -7,7 +7,29 @@ import io
 # Initialize Gemini Client (replace with your key from AI Studio)
 client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
+st.set_page_config(page_title="AI Note Summarizer", page_icon="📝", layout="wide")
+
+# ---------- Sidebar ----------
+with st.sidebar:
+    st.header("⚙️ Settings")
+
+    style = st.selectbox(
+        "Summary style:",
+        ["Bullet points", "Paragraph", "Explain like I'm 5 (ELI5)"],
+    )
+
+    length = st.select_slider(
+        "Summary length:",
+        options=["Short", "Medium", "Detailed"],
+        value="Medium",
+    )
+
+    st.divider()
+    st.caption("Made for [Your Class Name] — School Project")
+    st.caption("Upload notes or paste them, choose a style, then generate.")
+
 st.title("📝 AI Note Summarizer")
+st.write("Paste your notes below, or upload a file (PDF, Word, or TXT).")
 
 
 def extract_text_from_file(uploaded_file):
@@ -31,7 +53,26 @@ def extract_text_from_file(uploaded_file):
         return ""
 
 
-st.write("Paste your notes below, or upload a file (PDF, Word, or TXT).")
+def build_prompt(notes, style, length):
+    style_instructions = {
+        "Bullet points": "Format the summary as clear bullet points grouped under short headings.",
+        "Paragraph": "Format the summary as flowing paragraphs, not bullet points.",
+        "Explain like I'm 5 (ELI5)": "Explain the concepts in very simple language, as if teaching a beginner with no background knowledge, using short sentences and simple analogies.",
+    }
+    length_instructions = {
+        "Short": "Keep the summary brief — just the most essential points.",
+        "Medium": "Give a moderately detailed summary covering the main points.",
+        "Detailed": "Give a thorough, detailed summary covering all key concepts and supporting details.",
+    }
+
+    return (
+        "You are a study assistant. Summarize the following lecture notes into "
+        "key concepts and study points.\n\n"
+        f"Style: {style_instructions[style]}\n"
+        f"Length: {length_instructions[length]}\n\n"
+        f"Notes:\n{notes}"
+    )
+
 
 uploaded_file = st.file_uploader(
     "Upload notes file:", type=["pdf", "docx", "txt"]
@@ -52,12 +93,15 @@ user_notes = st.text_area(
     height=200,
 )
 
-if st.button("Generate Summary"):
+generate_clicked = st.button("Generate Summary", type="primary")
+
+if generate_clicked:
     if user_notes.strip():
         with st.spinner("Summarizing..."):
+            prompt = build_prompt(user_notes, style, length)
             response = client.models.generate_content(
                 model="gemini-3-flash-preview",
-                contents=f"You are a study assistant. Summarize these notes into key concepts and bullet points:\n\n{user_notes}",
+                contents=prompt,
             )
             st.subheader("Summary & Study Points")
             st.write(response.text)
