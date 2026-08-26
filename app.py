@@ -25,7 +25,7 @@ with st.sidebar:
     )
 
     st.divider()
-    st.caption("Made for [Your Class Name] — School Project")
+    st.caption("Made for School Project")
     st.caption("Upload notes or paste them, choose a style, then generate.")
 
 st.title("📝 AI Note Summarizer")
@@ -64,6 +64,10 @@ def build_prompt(notes, style, length):
         "Medium": "Give a moderately detailed summary covering the main points.",
         "Detailed": "Give a thorough, detailed summary covering all key concepts and supporting details.",
     }
+    if language == "Auto-detect (match my notes)":
+        language_instruction = "Detect the language the notes are written in, and write your entire response in that same language."
+    else:
+        language_instruction = f"Write your entire response in {language}, regardless of what language the notes are written in."
 
     return (
         "You are a study assistant. Summarize the following lecture notes into "
