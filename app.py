@@ -23,6 +23,7 @@ with st.sidebar:
         options=["Short", "Medium", "Detailed"],
         value="Medium",
     )
+
     language = st.selectbox(
         "Response language:",
         ["Auto-detect (match my notes)", "English", "Thai", "Spanish", "French", "Chinese", "Japanese"],
@@ -57,7 +58,7 @@ def extract_text_from_file(uploaded_file):
         return ""
 
 
-def build_prompt(notes, style, length):
+def build_prompt(notes, style, length, language):
     style_instructions = {
         "Bullet points": "Format the summary as clear bullet points grouped under short headings.",
         "Paragraph": "Format the summary as flowing paragraphs, not bullet points.",
@@ -68,6 +69,7 @@ def build_prompt(notes, style, length):
         "Medium": "Give a moderately detailed summary covering the main points.",
         "Detailed": "Give a thorough, detailed summary covering all key concepts and supporting details.",
     }
+
     if language == "Auto-detect (match my notes)":
         language_instruction = "Detect the language the notes are written in, and write your entire response in that same language."
     else:
@@ -77,7 +79,8 @@ def build_prompt(notes, style, length):
         "You are a study assistant. Summarize the following lecture notes into "
         "key concepts and study points.\n\n"
         f"Style: {style_instructions[style]}\n"
-        f"Length: {length_instructions[length]}\n\n"
+        f"Length: {length_instructions[length]}\n"
+        f"Language: {language_instruction}\n\n"
         f"Notes:\n{notes}"
     )
 
@@ -106,7 +109,7 @@ generate_clicked = st.button("Generate Summary", type="primary")
 if generate_clicked:
     if user_notes.strip():
         with st.spinner("Summarizing..."):
-            prompt = build_prompt(user_notes, style, length)
+            prompt = build_prompt(user_notes, style, length, language)
             response = client.models.generate_content(
                 model="gemini-3-flash-preview",
                 contents=prompt,
