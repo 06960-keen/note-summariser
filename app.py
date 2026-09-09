@@ -158,18 +158,6 @@ if generate_clicked:
     else:
         st.warning("Please enter some notes first!")
  
-# ---------- Show latest summary ----------
-if st.session_state.history:
-    latest = st.session_state.history[-1]
-    st.subheader("Summary & Study Points")
-    st.write(latest["summary"])
- 
-    st.download_button(
-        label="⬇️ Download this summary",
-        data=latest["summary"],
-        file_name="summary.txt",
-        mime="text/plain",
-    )
 
 # ---------- Show latest summary ----------
 if st.session_state.history:
