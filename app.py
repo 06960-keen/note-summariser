@@ -1,5 +1,6 @@
 import streamlit as st
 from google import genai
+from pydantic import BaseModel, Field
 from pypdf import PdfReader
 import docx
 import io
@@ -91,7 +92,30 @@ def build_prompt(notes, style, length, language):
         f"Language: {language_instruction}\n\n"
         f"Notes:\n{notes}"
     )
+class QuizQuestion(BaseModel):
+    question: str = Field(description="The question based on the notes")
+    options: list[str] = Field(description="List of 4 distinct choices")
+    correct_answer: str = Field(description="The exact string matching the correct option")
+    explanation: str = Field(description="Brief explanation of why the answer is correct")
 
+class Quiz(BaseModel):
+    questions: list[QuizQuestion]
+
+def generate_quiz(notes, language):
+    prompt = (
+        f"Generate a 3-5 question multiple-choice quiz based on these notes to help test recall.\n"
+        f"Language instruction: {language}\n\nNotes:\n{notes}"
+    )
+    
+    response = client.models.generate_content(
+        model="gemini-3-flash-preview",
+        contents=prompt,
+        config={
+            "response_mime_type": "application/json",
+            "response_schema": Quiz,
+        },
+    )
+    return Quiz.model_validate_json(response.text)
 
 uploaded_file = st.file_uploader(
     "Upload notes file:", type=["pdf", "docx", "txt"]
@@ -146,6 +170,54 @@ if st.session_state.history:
         file_name="summary.txt",
         mime="text/plain",
     )
+
+# ---------- Show latest summary ----------
+if st.session_state.history:
+    latest = st.session_state.history[-1]
+    st.subheader("Summary & Study Points")
+    st.write(latest["summary"])
+ 
+    st.download_button(
+        label="⬇️ Download this summary",
+        data=latest["summary"],
+        file_name="summary.txt",
+        mime="text/plain",
+    )
+
+    # --- ADD QUIZ SECTION HERE ---
+    st.divider()
+    if st.button("🎮 Generate Pop Quiz from Notes"):
+        with st.spinner("Creating quiz..."):
+            st.session_state.quiz = generate_quiz(latest["notes"], latest["language"])
+
+    if "quiz" in st.session_state and st.session_state.quiz:
+        st.subheader("🧠 Memory Recall Quiz")
+        
+        with st.form("quiz_form"):
+            user_answers = {}
+            for idx, q in enumerate(st.session_state.quiz.questions):
+                st.write(f"**Q{idx + 1}: {q.question}**")
+                user_answers[idx] = st.radio(
+                    "Select your answer:",
+                    q.options,
+                    key=f"q_{idx}",
+                    index=None
+                )
+                st.write("")
+                
+            submitted = st.form_submit_button("Submit Answers")
+            
+            if submitted:
+                score = 0
+                for idx, q in enumerate(st.session_state.quiz.questions):
+                    selected = user_answers[idx]
+                    if selected == q.correct_answer:
+                        st.success(f"Q{idx + 1}: Correct! 🎉 {q.explanation}")
+                        score += 1
+                    else:
+                        st.error(f"Q{idx + 1}: Incorrect. Correct answer: **{q.correct_answer}**. {q.explanation}")
+                
+                st.metric("Final Score", f"{score} / {len(st.session_state.quiz.questions)}")
  
 # ---------- Past results ----------
 if len(st.session_state.history) > 1:
