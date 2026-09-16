@@ -13,6 +13,7 @@ st.set_page_config(page_title="AI Note Summarizer", page_icon="📝", layout="wi
 
 if "history" not in st.session_state:
     st.session_state.history = []
+
 # ---------- Sidebar ----------
 with st.sidebar:
     st.header("⚙️ Settings")
@@ -30,7 +31,15 @@ with st.sidebar:
 
     language = st.selectbox(
         "Response language:",
-        ["Auto-detect (match my notes)", "English", "Thai", "Spanish", "French", "Chinese", "Japanese"],
+        [
+            "Auto-detect (match my notes)",
+            "English",
+            "Thai",
+            "Spanish",
+            "French",
+            "Chinese",
+            "Japanese",
+        ],
     )
 
     st.divider()
@@ -42,7 +51,7 @@ with st.sidebar:
         value=5,
     )
 
-    st.dvider()
+    st.divider()  # Fixed typo: changed st.dvider() to st.divider()
     st.caption("Made for School Project")
     st.caption("Upload notes or paste them, choose a style, then generate.")
 
@@ -50,8 +59,10 @@ with st.sidebar:
         st.divider()
         if st.button("🗑️ Clear history"):
             st.session_state.history = []
+            if "quiz" in st.session_state:
+                del st.session_state.quiz
             st.rerun()
-            
+
 st.title("📝 AI Note Summarizer")
 st.write("Paste text or upload notes files (PDF, Word, TXT) and diagrams/images (PNG, JPG).")
 
@@ -101,6 +112,8 @@ def build_prompt(notes, style, length, language):
         f"Language: {language_instruction}\n\n"
         f"Text Notes:\n{notes}"
     )
+
+
 # Structured JSON Schema for Pop Quiz
 class QuizQuestion(BaseModel):
     question: str = Field(description="The question based on notes and images")
@@ -108,16 +121,17 @@ class QuizQuestion(BaseModel):
     correct_answer: str = Field(description="Exact string matching the correct option")
     explanation: str = Field(description="Brief explanation of why correct")
 
+
 class Quiz(BaseModel):
     questions: list[QuizQuestion]
+
 
 def generate_quiz(notes, images, count, language):
     prompt = (
         f"Generate a {count}-question multiple-choice quiz based on the notes and attached images.\n"
         f"Language instruction: {language}\n\nNotes:\n{notes}"
     )
-    
-    # Combine prompt text and images for Gemini multimodal execution
+
     contents = [prompt] + images
 
     response = client.models.generate_content(
@@ -129,6 +143,7 @@ def generate_quiz(notes, images, count, language):
         },
     )
     return Quiz.model_validate_json(response.text)
+
 
 # Upload UI
 col1, col2 = st.columns(2)
@@ -167,7 +182,7 @@ user_notes = st.text_area(
 )
 
 generate_clicked = st.button("Generate Summary", type="primary")
- 
+
 if generate_clicked:
     if user_notes.strip() or loaded_images:
         with st.spinner("Summarizing text & analyzing images..."):
@@ -193,14 +208,14 @@ if generate_clicked:
                 del st.session_state.quiz
     else:
         st.warning("Please upload files, images, or enter notes first!")
- 
 
-# ---------- Show latest summary ----------
+
+# ---------- Show latest summary & Quiz ----------
 if st.session_state.history:
     latest = st.session_state.history[-1]
     st.subheader("Summary & Study Points")
     st.write(latest["summary"])
- 
+
     st.download_button(
         label="⬇️ Download this summary",
         data=latest["summary"],
@@ -208,9 +223,9 @@ if st.session_state.history:
         mime="text/plain",
     )
 
-st.divider()
+    st.divider()
 
-    # Quiz Trigger
+    # Quiz Trigger (inside the history check so `latest` exists)
     if st.button(f"🎮 Generate Pop Quiz ({num_questions} Questions)"):
         with st.spinner("Creating quiz..."):
             st.session_state.quiz = generate_quiz(
@@ -254,13 +269,15 @@ st.divider()
                     "Final Score",
                     f"{score} / {len(st.session_state.quiz.questions)}",
                 )
- 
+
 # ---------- Past results ----------
 if len(st.session_state.history) > 1:
     st.divider()
     st.subheader("📚 Past Summaries")
     for i, entry in enumerate(reversed(st.session_state.history[:-1])):
-        with st.expander(f"Summary {len(st.session_state.history) - 1 - i} — {entry['style']}, {entry['length']}"):
+        with st.expander(
+            f"Summary {len(st.session_state.history) - 1 - i} — {entry['style']}, {entry['length']}"
+        ):
             st.write(entry["summary"])
             st.download_button(
                 label="⬇️ Download",
@@ -269,4 +286,3 @@ if len(st.session_state.history) > 1:
                 mime="text/plain",
                 key=f"download_{i}",
             )
- 
