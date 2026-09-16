@@ -1,11 +1,12 @@
-import streamlit as st
-from google import genai
+import io
+import docx
+from PIL import Image
 from pydantic import BaseModel, Field
 from pypdf import PdfReader
-import docx
-import io
+from google import genai
+import streamlit as st
 
-# Initialize Gemini Client (replace with your key from AI Studio)
+# Initialize Gemini Client
 client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
 st.set_page_config(page_title="AI Note Summarizer", page_icon="📝", layout="wide")
@@ -18,7 +19,7 @@ with st.sidebar:
 
     style = st.selectbox(
         "Summary style:",
-        ["Bullet points", "Paragraph", "Explain like I'm 5 (ELI5)"],
+        ["Bullet points", "Paragraph", "Explain like I'm 5"],
     )
 
     length = st.select_slider(
@@ -33,6 +34,15 @@ with st.sidebar:
     )
 
     st.divider()
+    st.header("🧠 Quiz Options")
+    num_questions = st.slider(
+        "Number of quiz questions:",
+        min_value=1,
+        max_value=10,
+        value=5,
+    )
+
+    st.dvider()
     st.caption("Made for School Project")
     st.caption("Upload notes or paste them, choose a style, then generate.")
 
@@ -43,7 +53,7 @@ with st.sidebar:
             st.rerun()
             
 st.title("📝 AI Note Summarizer")
-st.write("Paste your notes below, or upload a file (PDF, Word, or TXT).")
+st.write("Paste text or upload notes files (PDF, Word, TXT) and diagrams/images (PNG, JPG).")
 
 
 def extract_text_from_file(uploaded_file):
@@ -71,45 +81,48 @@ def build_prompt(notes, style, length, language):
     style_instructions = {
         "Bullet points": "Format the summary as clear bullet points grouped under short headings.",
         "Paragraph": "Format the summary as flowing paragraphs, not bullet points.",
-        "Explain like I'm 5 (ELI5)": "Explain the concepts in very simple language, as if teaching a beginner with no background knowledge, using short sentences and simple analogies.",
+        "Explain like I'm 5": "Explain the concepts in very simple language, using simple analogies.",
     }
     length_instructions = {
-        "Short": "Keep the summary brief — just the most essential points.",
-        "Medium": "Give a moderately detailed summary covering the main points.",
-        "Detailed": "Give a thorough, detailed summary covering all key concepts and supporting details.",
+        "Short": "Keep the summary brief — just the essential points.",
+        "Medium": "Give a moderately detailed summary covering main points.",
+        "Detailed": "Give a thorough summary covering key concepts and details.",
     }
 
     if language == "Auto-detect (match my notes)":
-        language_instruction = "Detect the language the notes are written in, and write your entire response in that same language."
+        language_instruction = "Detect the note/image language, write response in that language."
     else:
-        language_instruction = f"Write your entire response in {language}, regardless of what language the notes are written in."
+        language_instruction = f"Write response in {language}."
 
     return (
-        "You are a study assistant. Summarize the following lecture notes into "
-        "key concepts and study points.\n\n"
+        "You are a study assistant. Summarize the provided lecture text/images into key concepts.\n\n"
         f"Style: {style_instructions[style]}\n"
         f"Length: {length_instructions[length]}\n"
         f"Language: {language_instruction}\n\n"
-        f"Notes:\n{notes}"
+        f"Text Notes:\n{notes}"
     )
+# Structured JSON Schema for Pop Quiz
 class QuizQuestion(BaseModel):
-    question: str = Field(description="The question based on the notes")
+    question: str = Field(description="The question based on notes and images")
     options: list[str] = Field(description="List of 4 distinct choices")
-    correct_answer: str = Field(description="The exact string matching the correct option")
-    explanation: str = Field(description="Brief explanation of why the answer is correct")
+    correct_answer: str = Field(description="Exact string matching the correct option")
+    explanation: str = Field(description="Brief explanation of why correct")
 
 class Quiz(BaseModel):
     questions: list[QuizQuestion]
 
-def generate_quiz(notes, language):
+def generate_quiz(notes, images, count, language):
     prompt = (
-        f"Generate a 3-5 question multiple-choice quiz based on these notes to help test recall.\n"
+        f"Generate a {count}-question multiple-choice quiz based on the notes and attached images.\n"
         f"Language instruction: {language}\n\nNotes:\n{notes}"
     )
     
+    # Combine prompt text and images for Gemini multimodal execution
+    contents = [prompt] + images
+
     response = client.models.generate_content(
         model="gemini-3-flash-preview",
-        contents=prompt,
+        contents=contents,
         config={
             "response_mime_type": "application/json",
             "response_schema": Quiz,
@@ -117,18 +130,35 @@ def generate_quiz(notes, language):
     )
     return Quiz.model_validate_json(response.text)
 
-uploaded_file = st.file_uploader(
-    "Upload notes file:", type=["pdf", "docx", "txt"]
-)
+# Upload UI
+col1, col2 = st.columns(2)
+with col1:
+    uploaded_files = st.file_uploader(
+        "Upload notes files (PDF, DOCX, TXT):",
+        type=["pdf", "docx", "txt"],
+        accept_multiple_files=True,
+    )
+with col2:
+    uploaded_images = st.file_uploader(
+        "Upload study images/diagrams:",
+        type=["png", "jpg", "jpeg", "webp"],
+        accept_multiple_files=True,
+    )
 
 extracted_text = ""
-if uploaded_file is not None:
-    with st.spinner("Reading file..."):
-        extracted_text = extract_text_from_file(uploaded_file)
+loaded_images = []
+
+if uploaded_files:
+    for file in uploaded_files:
+        extracted_text += extract_text_from_file(file) + "\n\n"
     if extracted_text.strip():
-        st.success(f"Loaded text from {uploaded_file.name}")
-    else:
-        st.warning("Couldn't find any readable text in that file.")
+        st.success(f"Loaded content from {len(uploaded_files)} file(s).")
+
+if uploaded_images:
+    for img_file in uploaded_images:
+        img = Image.open(img_file)
+        loaded_images.append(img)
+    st.image(loaded_images, caption=[f.name for f in uploaded_images], width=150)
 
 user_notes = st.text_area(
     "Paste your lecture notes here:",
@@ -139,24 +169,30 @@ user_notes = st.text_area(
 generate_clicked = st.button("Generate Summary", type="primary")
  
 if generate_clicked:
-    if user_notes.strip():
-        with st.spinner("Summarizing..."):
+    if user_notes.strip() or loaded_images:
+        with st.spinner("Summarizing text & analyzing images..."):
             prompt = build_prompt(user_notes, style, length, language)
+            contents = [prompt] + loaded_images
+
             response = client.models.generate_content(
                 model="gemini-3-flash-preview",
-                contents=prompt,
+                contents=contents,
             )
+
             st.session_state.history.append(
                 {
                     "notes": user_notes,
+                    "images": loaded_images,
                     "summary": response.text,
                     "style": style,
                     "length": length,
                     "language": language,
                 }
             )
+            if "quiz" in st.session_state:
+                del st.session_state.quiz
     else:
-        st.warning("Please enter some notes first!")
+        st.warning("Please upload files, images, or enter notes first!")
  
 
 # ---------- Show latest summary ----------
@@ -172,15 +208,22 @@ if st.session_state.history:
         mime="text/plain",
     )
 
-    # --- ADD QUIZ SECTION HERE ---
-    st.divider()
-    if st.button("🎮 Generate Pop Quiz from Notes"):
-        with st.spinner("Creating quiz..."):
-            st.session_state.quiz = generate_quiz(latest["notes"], latest["language"])
+st.divider()
 
+    # Quiz Trigger
+    if st.button(f"🎮 Generate Pop Quiz ({num_questions} Questions)"):
+        with st.spinner("Creating quiz..."):
+            st.session_state.quiz = generate_quiz(
+                latest["notes"],
+                latest["images"],
+                num_questions,
+                latest["language"],
+            )
+
+    # Quiz Render Form
     if "quiz" in st.session_state and st.session_state.quiz:
         st.subheader("🧠 Memory Recall Quiz")
-        
+
         with st.form("quiz_form"):
             user_answers = {}
             for idx, q in enumerate(st.session_state.quiz.questions):
@@ -189,12 +232,12 @@ if st.session_state.history:
                     "Select your answer:",
                     q.options,
                     key=f"q_{idx}",
-                    index=None
+                    index=None,
                 )
                 st.write("")
-                
+
             submitted = st.form_submit_button("Submit Answers")
-            
+
             if submitted:
                 score = 0
                 for idx, q in enumerate(st.session_state.quiz.questions):
@@ -203,9 +246,14 @@ if st.session_state.history:
                         st.success(f"Q{idx + 1}: Correct! 🎉 {q.explanation}")
                         score += 1
                     else:
-                        st.error(f"Q{idx + 1}: Incorrect. Correct answer: **{q.correct_answer}**. {q.explanation}")
-                
-                st.metric("Final Score", f"{score} / {len(st.session_state.quiz.questions)}")
+                        st.error(
+                            f"Q{idx + 1}: Incorrect. Correct answer: **{q.correct_answer}**. {q.explanation}"
+                        )
+
+                st.metric(
+                    "Final Score",
+                    f"{score} / {len(st.session_state.quiz.questions)}",
+                )
  
 # ---------- Past results ----------
 if len(st.session_state.history) > 1:
