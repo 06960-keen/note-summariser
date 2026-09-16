@@ -44,6 +44,7 @@ with st.sidebar:
 
     st.divider()
     st.header("🧠 Quiz Options")
+    
     num_questions = st.slider(
         "Number of quiz questions:",
         min_value=1,
@@ -51,7 +52,13 @@ with st.sidebar:
         value=5,
     )
 
-    st.divider()  # Fixed typo: changed st.dvider() to st.divider()
+    difficulty = st.select_slider(
+        "Quiz difficulty:",
+        options=["Easy", "Medium", "Hard"],
+        value="Medium",
+    )
+
+    st.divider()
     st.caption("Made for School Project")
     st.caption("Upload notes or paste them, choose a style, then generate.")
 
@@ -126,9 +133,16 @@ class Quiz(BaseModel):
     questions: list[QuizQuestion]
 
 
-def generate_quiz(notes, images, count, language):
+def generate_quiz(notes, images, count, difficulty, language):
+    difficulty_instructions = {
+        "Easy": "Focus on straightforward recall of main terms and basic definitions.",
+        "Medium": "Require understanding and application of core concepts from the text.",
+        "Hard": "Ask tricky, highly specific detail questions and scenario-based application logic.",
+    }
+
     prompt = (
         f"Generate a {count}-question multiple-choice quiz based on the notes and attached images.\n"
+        f"Difficulty: {difficulty_instructions[difficulty]}\n"
         f"Language instruction: {language}\n\nNotes:\n{notes}"
     )
 
@@ -225,13 +239,14 @@ if st.session_state.history:
 
     st.divider()
 
-    # Quiz Trigger (inside the history check so `latest` exists)
-    if st.button(f"🎮 Generate Pop Quiz ({num_questions} Questions)"):
+    # Quiz Trigger
+    if st.button(f"🎮 Generate Pop Quiz ({num_questions} Questions • {difficulty})"):
         with st.spinner("Creating quiz..."):
             st.session_state.quiz = generate_quiz(
                 latest["notes"],
                 latest["images"],
                 num_questions,
+                difficulty,
                 latest["language"],
             )
 
